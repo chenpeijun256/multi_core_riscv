@@ -11,11 +11,8 @@ Ubuntu 22.04
 **install:** <br>
 sudo apt install iverilog gtkwave
 
-**download code:** <br>
-git clone https://github.com/chenpeijun256/riscv-5s.git
-
 **make:** <br>
-cd riscv-5s/iver <br>
+cd ./iver <br>
 make <br>
 make clean <br>
 
