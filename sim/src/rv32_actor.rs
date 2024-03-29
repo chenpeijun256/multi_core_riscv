@@ -27,14 +27,14 @@ pub struct Rv32Actor {
 }
 
 impl Rv32Actor {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, gdb_active: i32) -> Self {
         Rv32Actor{
                     name,
                     tick_cnt: 0,
                     cpus: Vec::new(),
                     mems: Vec::new(),
                     perips: Vec::new(),
-                    gdb_i: 0,
+                    gdb_i: gdb_active as usize,
                     gdb_breakpoint: 0,
                 }
     }
@@ -51,11 +51,11 @@ impl Rv32Actor {
         self.perips.push(p);
     }
 
-    pub fn fill_mem(&mut self, m_index: usize, data: Vec<u8>, pos: u32) {
-        if m_index < self.mems.len() {
-            self.mems[m_index].fill(data, pos);
-        }
-    }
+    // pub fn fill_mem(&mut self, m_index: usize, data: Vec<u8>, pos: u32) {
+    //     if m_index < self.mems.len() {
+    //         self.mems[m_index].fill(data, pos);
+    //     }
+    // }
 
     // pub fn get_rs(&self, index: u32) -> u32 {
     //     self.cpus[0].get_rs(index)
@@ -115,25 +115,21 @@ impl Rv32Actor {
         }
     }
 
-    fn read_instr(mems: &Vec<Mem>, pc: u32) -> u32 {
-        for m in mems.iter() {
-            if m.in_range(pc) {
-                return m.read_u32(pc);
-            }
-        }
-        return 0;
+    fn read_instr(m: &Mem, cpu: &Rv32Cpu) -> u32 {
+        return m.read_u32(cpu.get_pc())
     }
 
     pub fn tick(&mut self) {
         println!("--- @ {}, tick: {} ---", self.name, self.tick_cnt);
-        for cpu in self.cpus.iter_mut() {
+        for (i, cpu) in self.cpus.iter_mut().enumerate() {
             cpu.set_ebreak(false);
 
+            let m = &mut self.mems[i];
             let pc = cpu.get_pc();
-            let instr = Rv32Actor::read_instr(&self.mems, pc);
+            let instr = Rv32Actor::read_instr(m, &cpu);
             if instr != 0 {
                 println!("[{}] pc: {:x}, instr: {:08x}", cpu.name(), pc, instr);
-                Rv32Actor::execute(cpu, pc, instr, &mut self.mems, &mut self.perips);
+                Rv32Actor::execute(cpu, pc, instr, m, &mut self.perips);
             } else {
                 println!("read code failed at pc: {:x}", pc);
                 cpu.set_exception(IntrType::ExceMem(pc));
@@ -144,7 +140,7 @@ impl Rv32Actor {
         self.handle_exception();
     }
 
-    fn execute(cpu: &mut Rv32Cpu, pc: u32, instr: u32, mems: &mut Vec<Mem>, perips: &mut Vec<Perips>) {
+    fn execute(cpu: &mut Rv32Cpu, pc: u32, instr: u32, m: &mut Mem, perips: &mut Vec<Perips>) {
         //opcode = instr[6:0];
         match instr & 0x7f {
             //lui 7'b0110111
@@ -181,12 +177,12 @@ impl Rv32Actor {
             },
             //load, 7'b0000011
             0x03 => {
-                Rv32Actor::execute_load(cpu, instr, mems, perips);
+                Rv32Actor::execute_load(cpu, instr, m, perips);
                 cpu.set_pc(pc.wrapping_add(4));
             },
             //store, 7'b0100011
             0x23 => {
-                Rv32Actor::execute_store(cpu, instr, mems, perips);
+                Rv32Actor::execute_store(cpu, instr, m, perips);
                 cpu.set_pc(pc.wrapping_add(4));
             },
             //fence  7'b0001111
@@ -477,7 +473,7 @@ impl Rv32Actor {
         }
     }
 
-    fn execute_load(cpu: &mut Rv32Cpu, instr: u32, mems: &Vec<Mem>, perips: &Vec<Perips>) {
+    fn execute_load(cpu: &mut Rv32Cpu, instr: u32, m: &Mem, perips: &Vec<Perips>) {
         let (rs1, rs1_data) = cpu.get_rs_1(instr);
         let imm = (instr>>20) & 0x00000fff;
         let s_imm = if instr & 0x80000000 == 0x80000000 { 0xfffff000 | imm } else { imm };
@@ -491,11 +487,8 @@ impl Rv32Actor {
                 //     if m.in_range(r_addr) {
                 //         rd_data = m.read_u8(r_addr) as i8 as i32;
                 // }});
-                for m in mems.iter() {
-                    if m.in_range(r_addr) {
-                        rd_data = m.read_u8(r_addr) as i8 as i32;
-                        break;
-                    }
+                if m.in_range(r_addr) {
+                    rd_data = m.read_u8(r_addr) as i8 as i32;
                 }
                 let rd = cpu.set_rd(instr, rd_data as u32);
                 println!("lb {}, {}({})", REG_NAME[rd], s_imm as i32, REG_NAME[rs1]);
@@ -503,11 +496,8 @@ impl Rv32Actor {
             //lbu 3'b100
             0x04 => {
                 let mut rd_data = 0;
-                for m in mems.iter() {
-                    if m.in_range(r_addr) {
-                        rd_data = m.read_u8(r_addr);
-                        break;
-                    }
+                if m.in_range(r_addr) {
+                    rd_data = m.read_u8(r_addr);
                 }
                 let rd = cpu.set_rd(instr, rd_data as u32);
                 println!("lbu {}, {}({})", REG_NAME[rd], s_imm as i32, REG_NAME[rs1]);
@@ -515,11 +505,8 @@ impl Rv32Actor {
             //lh 3'b001
             0x01 => {
                 let mut rd_data = 0;
-                for m in mems.iter() {
-                    if m.in_range(r_addr) {
-                        rd_data = m.read_u16(r_addr) as i16 as i32;
-                        break;
-                    }
+                if m.in_range(r_addr) {
+                    rd_data = m.read_u16(r_addr) as i16 as i32;
                 }
                 let rd = cpu.set_rd(instr, rd_data as u32);
                 println!("lh {}, {}({})", REG_NAME[rd], s_imm as i32, REG_NAME[rs1]);
@@ -527,11 +514,8 @@ impl Rv32Actor {
             //lhu 3'b101
             0x05 => {
                 let mut rd_data = 0;
-                for m in mems.iter() {
-                    if m.in_range(r_addr) {
-                        rd_data = m.read_u16(r_addr);
-                        break;
-                    }
+                if m.in_range(r_addr) {
+                    rd_data = m.read_u16(r_addr);
                 }
                 let rd = cpu.set_rd(instr, rd_data as u32);
                 println!("lhu {}, {}({})", REG_NAME[rd], s_imm as i32, REG_NAME[rs1]);
@@ -539,11 +523,8 @@ impl Rv32Actor {
             //lw 3'b010
             0x02 => {
                 let mut rd_data = 0 ;
-                for m in mems.iter() {
-                    if m.in_range(r_addr) {
-                        rd_data = m.read_u32(r_addr);
-                        break;
-                    }
+                if m.in_range(r_addr) {
+                    rd_data = m.read_u32(r_addr);
                 }
                 for p in perips.iter() {
                     if p.in_range(r_addr) {
@@ -559,7 +540,7 @@ impl Rv32Actor {
         }
     }
 
-    fn execute_store(cpu: &mut Rv32Cpu, instr: u32, mems: &mut Vec<Mem>, perips: &mut Vec<Perips>) {
+    fn execute_store(cpu: &mut Rv32Cpu, instr: u32, m: &mut Mem, perips: &mut Vec<Perips>) {
         let (rs1, rs1_data) = cpu.get_rs_1(instr);
         let (rs2, rs2_data) = cpu.get_rs_2(instr);
         let imm = ((instr>>20) & 0x000007e0) | ((instr>>7) & 0x0000001f);
@@ -569,31 +550,22 @@ impl Rv32Actor {
         match instr>>12 & 0x07 {
             //sb 3'b000
             0x00 => {
-                for m in mems.iter_mut() {
-                    if m.in_range(wr_addr) {
-                        m.write_u8((rs2_data & 0xff) as u8, wr_addr);
-                        break;
-                    }
+                if m.in_range(wr_addr) {
+                    m.write_u8((rs2_data & 0xff) as u8, wr_addr);
                 }
                 println!("sb {}, {}({})", REG_NAME[rs2], s_imm as i32, REG_NAME[rs1]);
             },
             //sh 3'b001
             0x01 => {
-                for m in mems.iter_mut() {
-                    if m.in_range(wr_addr) {
-                        m.write_u16((rs2_data & 0xffff) as u16, wr_addr);
-                        break;
-                    }
+                if m.in_range(wr_addr) {
+                    m.write_u16((rs2_data & 0xffff) as u16, wr_addr);
                 }
                 println!("sh {}, {}({})", REG_NAME[rs2], s_imm as i32, REG_NAME[rs1]);
             },
             //sw 3'b010
             0x02 => {
-                for m in mems.iter_mut() {
-                    if m.in_range(wr_addr) {
-                        m.write_u32(rs2_data, wr_addr);
-                        break;
-                    }
+                if m.in_range(wr_addr) {
+                    m.write_u32(rs2_data, wr_addr);
                 }
                 for p in perips.iter_mut() {
                     if p.in_range(wr_addr) {
@@ -601,7 +573,7 @@ impl Rv32Actor {
                         break;
                     }
                 }
-                println!("sb {}, {}({})", REG_NAME[rs2], s_imm as i32, REG_NAME[rs1]);
+                println!("sw {}, {}({})", REG_NAME[rs2], s_imm as i32, REG_NAME[rs1]);
             },
             //others
             _ => panic!("store illegal instruction. {:08x}.", instr),
@@ -805,13 +777,12 @@ impl Rv32Actor {
 
     pub fn gdb_m(&self, start: u32, size: u32) -> String {
         let mut res = String::new();
-        for m in self.mems.iter() {
-            if m.in_range(start) {
-                for i in 0.. size {
-                    let d = m.read_u8(start + i);
-                    res.push_str(&utils::u8_to_hex(d));
-                }
-                break;
+        let m = &self.mems[self.gdb_i];
+
+        if m.in_range(start) {
+            for i in 0.. size {
+                let d = m.read_u8(start + i);
+                res.push_str(&utils::u8_to_hex(d));
             }
         }
 
@@ -819,13 +790,12 @@ impl Rv32Actor {
     }
 
     pub fn gdb_upper_m(&mut self, start: u32, size: u32, bytes: &str) {
-        for m in self.mems.iter_mut() {
-            if m.in_range(start) {
-                for i in 0..size {
-                    let s = (i * 2) as usize;
-                    let d = utils::hex_to_u8(&bytes[s..(s+2)]);
-                    m.write_u8(d, start + i);
-                }
+        let m = &mut self.mems[self.gdb_i];
+        if m.in_range(start) {
+            for i in 0..size {
+                let s = (i * 2) as usize;
+                let d = utils::hex_to_u8(&bytes[s..(s+2)]);
+                m.write_u8(d, start + i);
             }
         }
     }

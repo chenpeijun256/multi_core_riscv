@@ -1,5 +1,5 @@
 use std::{fs::{self, File}, io::BufReader};
-use crate::{mem::Mem, rv32_actor::Rv32Actor};
+use crate::{bin_file, mem::Mem, rv32_actor::Rv32Actor};
 use crate::perips::Perips;
 use crate::rv32_actor::cpu::Rv32Cpu;
 
@@ -12,6 +12,7 @@ struct CCpu {
     isa: String,
     freq: f32,
     rst_pc: u32,
+    bin_file: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -33,6 +34,7 @@ struct CPerips {
 #[derive(Serialize, Deserialize)]
 struct CSoc {
     name: String,
+    gdb_active: i32,
     cpus: Vec<CCpu>,
     mems: Vec<CMem>,
     perips: Vec<CPerips>,
@@ -41,18 +43,28 @@ struct CSoc {
 pub fn build_soc(cfg_file: String) -> Rv32Actor {
     let soc_cfg = read_cfg(cfg_file);
     println!("create {} soc.", soc_cfg.name);
-    let mut soc: Rv32Actor = Rv32Actor::new(soc_cfg.name);
+    let mut soc: Rv32Actor = Rv32Actor::new(soc_cfg.name, soc_cfg.gdb_active);
+
+    for i in 0..soc_cfg.mems.len() {
+        println!("start read {}", soc_cfg.cpus[i].bin_file);
+        match bin_file::read_file(&soc_cfg.cpus[i].bin_file) {
+            Ok(bytes) => {
+                let name = soc_cfg.mems[i].name.to_owned();
+                let mut mem = Mem::new(name, soc_cfg.mems[i].start, soc_cfg.mems[i].size);
+                println!("add mem {:?} to soc.", mem);
+                mem.fill(bytes, 0);
+                soc.add_mem(mem);
+            },
+            Err(e) => {
+                println!("bin file read failed, {}", e);
+            }
+        }
+    }
 
     for cfg in soc_cfg.cpus {
         println!("add {} to soc.", cfg.name);
         let cpu = Rv32Cpu::new(cfg.name, cfg.rst_pc, cfg.freq);
         soc.add_cpu(cpu);
-    }
-
-    for cfg in soc_cfg.mems {
-        let mem = Mem::new(cfg.name, cfg.start, cfg.size);
-        println!("add mem {:?} to soc.", mem);
-        soc.add_mem(mem);
     }
 
     for cfg in soc_cfg.perips {
@@ -79,8 +91,9 @@ fn read_cfg(cfg_file: String) -> CSoc {
         Err(e) => println!("config file open failed. {e}"),
     };
 
-    return CSoc{name: "default".to_owned(), 
-                cpus: vec![CCpu{name: "cpu0".to_owned(), class: "rv32".to_owned(), isa: "im".to_owned(), freq: 50.0, rst_pc: 0}], 
+    return CSoc{name: "default".to_owned(), gdb_active: 0,
+                cpus: vec![CCpu{name: "cpu0".to_owned(), class: "rv32".to_owned(), isa: "im".to_owned(), 
+                                freq: 50.0, rst_pc: 0, bin_file: "main.bin".to_owned()}], 
                 mems: vec![CMem{name: "ram".to_owned(), start: 0, size: 8192}], 
                 perips: Vec::new()
             };

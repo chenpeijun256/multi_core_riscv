@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 
 use std::thread;
 
-use crate::{bin_file, utils};
+use crate::utils;
 use crate::config;
 use crate::rv32_actor::Rv32Actor;
 
@@ -13,19 +13,8 @@ pub struct GdbServer {
 
 impl GdbServer {
 
-    fn load_file(filename: &String) -> Rv32Actor {
-        println!("start read {filename}");
-        match bin_file::read_file(filename) {
-            Ok(bytes) => {
-                let mut soc = config::build_soc("rv32im.cfg".to_owned());
-                soc.fill_mem(0, bytes, 0);
-                return soc;
-            },
-            Err(e) => {
-                println!("bin file read failed, {}", e);
-                return Rv32Actor::new("".to_owned());
-            }
-        }
+    fn load_file() -> Rv32Actor {
+        config::build_soc("rv32im.cfg".to_owned())
     }
 
     fn pack_rsp(&self, s: &str) -> String {
@@ -145,11 +134,11 @@ impl GdbServer {
 }
 
    // Handles a single client
-fn handle_client(filename: String, mut stream: TcpStream) -> Result<(), std::io::Error> {
+fn handle_client(mut stream: TcpStream) -> Result<(), std::io::Error> {
     println!("Incoming connection from: {}", stream.peer_addr()?);
     let mut buf = [0; 512];
 
-    let mut soc = GdbServer::load_file(&filename);
+    let mut soc = GdbServer::load_file();
     let mut gdb = GdbServer::new();
     loop {
         let bytes_read = stream.read(&mut buf)?;
@@ -173,16 +162,15 @@ fn handle_client(filename: String, mut stream: TcpStream) -> Result<(), std::io:
     }
 }
 
-pub fn server_start(filename: &String) {
+pub fn server_start() {
     let listener = TcpListener::bind("0.0.0.0:3333")
                                             .expect("Tcp listener bind failed.");
     for stream in listener.incoming() {
         match stream {
             Err(e) => { println!("failed: {e}") },
             Ok(stream) => {
-                let fname = filename.clone();
                 thread::spawn(move || {
-                    handle_client(fname, stream).
+                    handle_client(stream).
                         unwrap_or_else(|e| println!("{e}"));
                 });
             },

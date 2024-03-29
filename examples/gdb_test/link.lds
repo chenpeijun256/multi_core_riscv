@@ -5,13 +5,13 @@ ENTRY(_start)
 MEMORY
 {
   flash (wxa!ri) : ORIGIN = 0x00000000, LENGTH = 1K
-  ram (wxa!ri) :   ORIGIN = 0x00001000, LENGTH = 256
+  ram (wxa!ri) :   ORIGIN = 0x00000400, LENGTH = 1K
 }
 
 
 SECTIONS
 {
-   __stack_size = DEFINED(__stack_size) ? __stack_size : 256;
+   __stack_size = DEFINED(__stack_size) ? __stack_size : 1K;
 
   .init           :
   {
@@ -106,7 +106,7 @@ SECTIONS
     *(.data .data.*)
     *(.gnu.linkonce.d.*)
     . = ALIGN(8);
-    PROVIDE( __global_pointer$ = . + 0x80 );
+    PROVIDE( __global_pointer$ = . + 0x200 );
     *(.sdata .sdata.*)
     *(.gnu.linkonce.s.*)
     . = ALIGN(8);

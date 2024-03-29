@@ -1,7 +1,7 @@
 int main()
 {
-    int a = 1234;
-    int b = 5678;
+    int a = 0x1010;
+    int b = 0x10ef;
     int c = b ^ a;
     return c;
 }
