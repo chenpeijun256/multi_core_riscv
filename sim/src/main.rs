@@ -14,7 +14,7 @@ fn main() {
         gdbserver::server_start(&args[1]);
     } else {
         println!("Please input with following format:");
-        println!("test file: zemulator filename.");
+        println!("remulator xxxx.bin");
         println!("--------------------------------");
     }
 }

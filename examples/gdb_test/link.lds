@@ -4,14 +4,14 @@ ENTRY(_start)
 
 MEMORY
 {
-  flash (wxa!ri) : ORIGIN = 0x00000000, LENGTH = 4K
-  ram (wxa!ri) :   ORIGIN = 0x00001000, LENGTH = 4K
+  flash (wxa!ri) : ORIGIN = 0x00000000, LENGTH = 1K
+  ram (wxa!ri) :   ORIGIN = 0x00001000, LENGTH = 256
 }
 
 
 SECTIONS
 {
-   __stack_size = DEFINED(__stack_size) ? __stack_size : 2K;
+   __stack_size = DEFINED(__stack_size) ? __stack_size : 256;
 
   .init           :
   {
@@ -106,7 +106,7 @@ SECTIONS
     *(.data .data.*)
     *(.gnu.linkonce.d.*)
     . = ALIGN(8);
-    PROVIDE( __global_pointer$ = . + 0x800 );
+    PROVIDE( __global_pointer$ = . + 0x80 );
     *(.sdata .sdata.*)
     *(.gnu.linkonce.s.*)
     . = ALIGN(8);
