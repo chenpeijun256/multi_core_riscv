@@ -39,6 +39,10 @@ impl Rv32Actor {
                 }
     }
 
+    pub fn set_gdb_i(&mut self, i: usize) {
+        self.gdb_i = i;
+    }
+
     pub fn add_cpu(&mut self, cpu: Rv32Cpu) {
         self.cpus.push(cpu);
     }

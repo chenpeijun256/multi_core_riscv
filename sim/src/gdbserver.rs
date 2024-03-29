@@ -7,6 +7,8 @@ use crate::utils;
 use crate::config;
 use crate::rv32_actor::Rv32Actor;
 
+const PORT:u16 = 3333;
+
 pub struct GdbServer {
     no_ack_mode: bool,
 }
@@ -38,7 +40,7 @@ impl GdbServer {
         if ss_str.len() >= 3 {
             let sum = utils::str_add_sum(ss_str[1]);
             let sum2 = utils::hex_to_u8(&ss_str[2][0..2]);
-            println!("sum check: {sum} .. {sum2}");
+            
             if sum == sum2 {
                 let out_str;
                 if ss_str[1].starts_with("qSupported") {
@@ -122,7 +124,11 @@ impl GdbServer {
                 }
                 println!("out: {out_str}");
                 return Some(out_str);
+            } else {
+                println!("sum check error: {sum} != {sum2}");
             }
+        } else {
+            println!("received data error.");
         }
 
         None
@@ -136,9 +142,13 @@ impl GdbServer {
    // Handles a single client
 fn handle_client(mut stream: TcpStream) -> Result<(), std::io::Error> {
     println!("Incoming connection from: {}", stream.peer_addr()?);
+    // println!("Incoming connection local: {}", stream.local_addr().unwrap().port());
+    let port = stream.local_addr().unwrap().port();
     let mut buf = [0; 512];
 
     let mut soc = GdbServer::load_file();
+    soc.set_gdb_i((port - PORT) as usize);
+
     let mut gdb = GdbServer::new();
     loop {
         let bytes_read = stream.read(&mut buf)?;
@@ -163,17 +173,20 @@ fn handle_client(mut stream: TcpStream) -> Result<(), std::io::Error> {
 }
 
 pub fn server_start() {
-    let listener = TcpListener::bind("0.0.0.0:3333")
-                                            .expect("Tcp listener bind failed.");
-    for stream in listener.incoming() {
-        match stream {
-            Err(e) => { println!("failed: {e}") },
-            Ok(stream) => {
-                thread::spawn(move || {
-                    handle_client(stream).
-                        unwrap_or_else(|e| println!("{e}"));
-                });
-            },
-        }
+
+    for port in PORT..PORT+3 {
+        thread::spawn(move || {
+            let listener = TcpListener::bind(format!("0.0.0.0:{port}"))
+                                                    .expect("Tcp listener bind failed.");
+            for stream in listener.incoming() {
+                match stream {
+                    Err(e) => { println!("failed: {e}") },
+                    Ok(stream) => {
+                        handle_client(stream).
+                            unwrap_or_else(|e| println!("{e}"));
+                    },
+                }
+            }
+        });
     }
 }
